@@ -1,0 +1,121 @@
+---
+title: "Multivariate Modeling Homework"
+output: html_document
+---
+Caroline Tribble
+
+For this assignment will be analyzing data on the Vegetation and Environment in Dutch Dune Meadows.
+
+To import the data and read the metadata run the following:
+
+```{r}
+library(vegan)
+data(dune)
+data(dune.env)
+?dune
+```
+
+Conduct an indirect ordination on the dune plant community. Specifically, visually examine a NMDS plot using the bray-curtis distance metric. Below is some code to help you develop a potential plot that emphasizes the role of the environmental variable “Moisture”. Describe how you interpret the graphic. What is the goal of creating such a plot? Does this analysis suggest any interesting findings with respect to the dune vegetation?
+```{r}
+str(dune)
+sapply(dune, class)
+```
+```{r}
+# visually explore the cover variable between species and sites
+uni_sp = unique(colnames(dune))
+sp_sum = apply(dune, 2, sum)
+site_sum = apply(dune, 1, sum)
+par(mfrow=c(2,2))
+hist(sp_sum)
+col = colorRamp(c('red', 'orange', 'blue'))
+sp_cols = col(length(uni_sp))
+plot(sp_sum[order(sp_sum, decreasing=T)], type='o', col='red', lwd=2,
+     xlab='Sp Rank', ylab='Sum Cover Class')
+hist(site_sum)
+plot(site_sum[order(site_sum, decreasing=T)], type='o', col='red', lwd=2,
+     xlab='Site Rank', ylab='Sum Cover Class')
+```
+
+```{r}
+all.equal(rownames(dune), rownames(dune.env))
+```
+
+```{r}
+dune_mds <- metaMDS(dune)
+```
+```{r}
+ plot(dune_mds, type='n')
+ text(dune_mds, 'sp', cex=.5)
+ # generate vector of colors 
+ color_vect = rev(terrain.colors(6))[-1]
+ points(dune_mds, 'sites', pch=19, 
+        col=color_vect[dune.env$Moisture])
+ legend('topright', paste("Moisture =", 1:5, sep=''), 
+        col=color_vect, pch=19)
+``` 
+From the NMDS plot we can see how these different species of vegetation in this dune community relate and differ according to their moisture factor level. Species with high mositure factors (4 and up) are grouped together (including sp. Comapalu, Callcusp, and Eleopalu), while those with low moisture factors (2 and below) are grouped together on the opposite side of the graph (including sp. Planlanc, Trifprat, and Achirhill) showing a strong association of mositure level within vegetation species in this community. The NMDS plot is non-eigenbased and based upon Bray-Curtis ecological distance matrices, meaning only rank information is used and is mapped non-linearly within the ordination space.  NMDS plots provide a good un-biased assessment to do in addition to eigenbased since the axes are not ordered and are fitted simultaneously. In the NMDS test run above the plot we can see how it is an iterative process and the stress values represent the goodness of the test.Stress values less than or equal 0.1 are considered fair and  values less than or equal to 0.05 support good fit. In this model the stress values range from 0.111 to 0.188 indicating this is a fair ordination of the dune vegetation community. 
+
+
+
+Carry out a direct ordination using CCA in order to test any potential hypotheses that you developed after examining the MDS plot. Specifically, carry out a test of the entire model (i.e., including all constrained axes) and also carry out tests at the scale of individual explanatory variables you included in your model if you included more than one variable. Plot your results.
+
+```{r}
+cca_dune = cca(dune~ ., data=dune.env)
+RsquareAdj(cca_dune, 100)
+```
+Adjusted R squared provides us with model accuracy because as our model complexity increases with the addition of independent variables we often see a skewed increase in our R-squared value. This adjusted R-squared provides a true goodness of fit of the model by taking this impact of model complexity into account. We can see for dune vegetation not all of these explanatory variables need to be included and this is not the best fit. 
+
+
+```{r}
+anova(cca_dune, permutations = 999)
+```
+```{r}
+anova(cca_dune, by='margin', permutations = 999)
+```
+```{r}
+plot(cca_dune, type='n', scaling=1)
+orditorp(cca_dune, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca_dune, display='bp', col='red')
+```
+Looking at this graph it is difficult to determine significance because these are nominal categorical variables and each variable is being broken down by their different nominal groupings within each variable (i.e. Moisture.L, Use.Q, etc.). 
+
+CCA similarly to RA and DCA assumes a non-linear species response model and also assumes a unimodal distribution of species along environmental gradients observed. Instead of Bray-Curtis distance matrices, with CCA sample scores are calculated by weighted averaging of species scores and these sample scores are then regressed against the environmental variables. CCA is basically an RA multiple regression that follows the assumptions that species responses to environmental variables are unimodal and that species dispersions are similar across species observed, fitting a gaussian curve. 
+In the plot, species ordination is shown by their position on the xy plane and the length of the arrows for each environmental variable represents the importance of that variable to ordination, while the direction of the arrow indicates the vectors correlation with the xy axes. From this plot it appears Management, Moisture, and Soil Thickness (A1) are the important environmental factors influencing spatial community. ManagementHF is parallel to the positive X axis showing that management factor is highly correlated to that axis. In addition, vectors with angles between two axes (such as ManagementNM) indicate they are correlated with both axes.
+```{r}
+cca2_dune = cca(dune~Moisture+Management+A1, data=dune.env)
+RsquareAdj(cca2_dune, 100)
+```
+Adjusted R squared actually got worse and it may be because with these nominal categorical variables broken up and not plotted as one variable's effect in one vector it is misleading which environmental variables are most important to include in the model.
+
+
+```{r}
+anova(cca2_dune, permutations = 999)
+```
+```{r}
+anova(cca2_dune, by='margin', permutations = 999)
+```
+Management level of the land appears to be the more important factor influencing species distribution in this model followed by moisture and soil thickness. 
+
+```{r}
+plot(cca2_dune, type='n', scaling=1)
+orditorp(cca2_dune, display='sp', cex=0.5, scaling=1, col='blue')
+text(cca2_dune, display='bp', col='red')
+```
+```{r}
+type_num = as.numeric(as.factor(dune.env$Management))
+ordiplot (cca2_dune, display = c('si', 'cn'), type = 'n')
+points (cca2_dune, display = 'si', col = type_num, pch = type_num)
+text (cca2_dune, display = 'cn', col = 'navy', cex = 1.0)
+legend ('topright', col = 1:4, pch = 1:4, legend = levels (as.factor (dune.env$Management)))
+```
+This plot focuses on the different management categories and displays how the distribution of species across management types varies and some management types display more clustering than others. 
+
+
+Do your two analyses agree with one another or complement one another or do these two analyses seem to be suggesting different take home messages? Which analysis do you find to be more useful?
+
+The NMDS plot is an indirect ordination in that the axes plotted are hypothetical whereas the CCA is a direct ordination in that the axes are a linear combination of the environmental variables in the dataset. Since the NMDS plot focuses more on the distribution of species across moisture gradients and the CCA plot shows moisture has a significant effect on species distribution, it has a different take home message in that it shows Management type is the most important factor in understanding the clustering of species. The CCA plot also points to significant trends in soil thickness, which we do not see in the NMDS plot. Usually if a NMDS corroborates a CCA ordination it provides powerful support for this unbiased assessment of the variables done with the NMDS plot. Since we can observe more trends in the CCA plot I would say this analysis is more useful but I am still a bit confused on actually comparing these plots since the NMDS plot focuses on Moisture factor while in the CCA plot we can observe more trends in the dune community data.
+
+
+
+
+

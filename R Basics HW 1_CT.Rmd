@@ -1,0 +1,70 @@
+---
+title: "R Basics Homework 1"
+output:
+  html_document: default
+  pdf_document: default
+---
+Caroline Tribble
+
+Manual download and import of the data:
+
+```{r}
+tgpp <- read.csv('https://raw.githubusercontent.com/dmcglinn/quant_methods/gh-pages/data/tgpp.csv', header = TRUE)
+```
+This dataset represents the vascular plant species richness that was collected from the Tallgrass Prairie Preserve from 10 x 10 m quadrats. Species richness is simply the number of species that occur within a quadrat.
+
+
+
+1. What are the names of the columns in this dataset?
+
+```{r}
+colnames(tgpp)
+```
+
+The column names are plot, year, record_id, corner, scale, richness, easting, northing, slope, pH and yrsslb.
+
+
+2. How many rows and columns does this data file have?
+```{r}
+dim(tgpp)
+```
+
+There are 4,080 rows and 11 columns of data contained in this file.
+
+
+3. What kind of object is each data column? Hint: checkout the function sapply().
+```{r}
+sapply(tgpp,class)
+```
+
+Each column contains either integer or numeric values. 
+
+
+4. What are the values of the datafile for rows 1, 5, and 8 at columns 3, 7, and 10
+
+```{r}
+tgpp[c(1,5,8),c(3,7,10)]
+
+```
+
+5. Create a pdf of the relationship between the variables “scale” and “richness”. Scale is the area in square meters of the quadrat in which richness was recorded. Be sure to label your axes clearly, and choose a color you find pleasing for the points. To get a list of available stock colors use the function colors(). Also see this link:
+
+```{r}
+plot(tgpp$scale,tgpp$richness, type = 'p', col = 'dark red', xlab ='Scale of Area within Quadrat (sq m)', ylab = 'Species Richness',main = 'Influence of Area on Species Richness in Tallgrass Praire Reserve')
+```
+
+6. What happens to your plot when you set the plot argument log equal to ‘xy’. 
+
+```{r}
+plot(tgpp$scale,tgpp$richness, type = 'p', col = 'dark red', xlab ='Scale of Area within Quadrat (sq m)', ylab = 'Species Richness',main = 'Influence of Area on Species Richness in Tallgrass Praire Reserve',log = 'xy')
+```
+
+When log transforming the data you can see there is a clear relationship between your variables which was not as clearly visible before you transformed it. Species richness increases with the scale of area and shows this concave down, increasing trend. You can also see as area of the quadrat increases there is less variation in species richness. Another thing to note is when you log transform your data you cannot transform zeros or negative values and these are omitted from the plot. If you have a lot of zeros in your data one way to deal with this is using a log+1 transformation instead.
+
+
+For creating a pdf of the plot: 
+```{r}
+pdf('/Users/caroline/Documents/Statistical Programming Class/HW1_Areaandrichness')
+```
+
+
