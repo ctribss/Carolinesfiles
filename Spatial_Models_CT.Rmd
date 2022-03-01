@@ -1,0 +1,460 @@
+---
+title: "Spatial_Models_CT"
+output: html_document
+---
+Caroline Tribble
+
+```{r}
+library(nlme)
+# Oribatid mite data. 70 soil cores collected by Daniel Borcard in 1989.
+# See Borcard et al. (1992, 1994) for details.
+data(mite)
+data(mite.env)
+data(mite.xy)
+?mite
+
+```
+```{r}
+library(vegan)
+data(BCI)
+## UTM Coordinates (in metres)
+BCI_xy = data.frame(x = rep(seq(625754, 626654, by=100), each=5), 
+                    y = rep(seq(1011569,  1011969, by=100), len=50))
+```
+1) Examine if there is evidence of spatial dependence in a rare and a common species in the BCI tree dataset
+
+```{r}
+treecounts <- rowSums(BCI > 0)
+hist(treecounts, xlab = "Counts of Tree Species across 50 1 hectare Plots")
+```
+
+This histogram shows the frequency distribution of tree counts across all 225 species surveyed in these 1 hectare plots in the Barro Colorado Island. The tree count frequency appears to increase exponentially until reaching the majority of plots that have counts between 90-95 trees, from here frequency in counts decreases, so abundance may level out here due to competition for space within a given hectare. 
+
+
+```{r}
+abu <- colSums(BCI)
+quantile(abu)
+plot(density(abu))
+```
+
+Highly skewed, for taking quantiles of this distribution it would make more sense to log transform it first before taking quantiles to get more reasonable lower and upper quantiles.
+
+```{r}
+quantile(log10(abu))
+10^0.845
+10^1.913814
+10^1.397940
+```
+```{r}
+which(abu > 25 & abu < 27)
+```
+```{r}
+which(abu > 10^1.93 & abu < 10^1.95)
+```
+
+```{r}
+rare_sp <- BCI[,65] #E. costaricensis
+comm_sp <- BCI[,58] #D. arboreus
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(BCI_xy, cex = rare_sp/ max(rare_sp), main = "E. costaricensis Spatial Dist")
+plot(BCI_xy, cex = comm_sp/ max(comm_sp), main = "D. arboreus Spatial Dist")
+```
+
+From these spatial distribution plots it is clear E. costaricensis is our rare species, seeming to have random hotspots along similar gradient lines as D. arboreus, the common species. D. arboreus appears to occur along gradient lines in few numbers, however there is one outlier hotspot of greater tree counts.
+
+```{r}
+geod <- dist(BCI_xy)
+rared <- dist(rare_sp)
+commd <- dist(comm_sp)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(geod, rared, main = 'Rare - E. costaricensis', xlab = "xy_dist", ylab = "rare dist")
+abline(lm(rared ~ geod), lwd=3, col='red')
+lines(lowess(geod, rared), lwd = 2, col = 'pink')
+plot(geod, commd, main = 'Common - D. arboreus', xlab = "xy_dist", ylab = "common dist")
+abline(lm(commd ~ geod), lwd=3, col='red')
+lines(lowess(geod, commd), lwd = 2, col = 'blue')
+```
+
+Rare species looks spatially dependent (flat line with correlation near zero) and the common species shows some degree of autocorrelation indicating the variable is spatially non-random in its distribution. Can formally test for the common species. 
+
+```{r}
+robs_cor <- cor(geod, rared)
+cobs_cor  <- cor(geod, commd) 
+robs_cor
+cobs_cor
+```
+
+No correlation for the rare species as expected and a very weak one for the common species.
+
+```{r}
+mantel(geod, rared)
+```
+
+Here the p-value is greater than 0.05 further supporting there is no spatial autocorrelation in our rare species model.
+
+```{r}
+mantel(geod, commd)
+```
+
+Conversely, the common species displays a p-value of 0.008 indicating a statistically significant positive spatial auto=correlation pattern. From here, distances can be grouped into bins and then estimated at each distance class to understand the pattern.
+
+```{r}
+comm_corlog <- mantel.correlog(commd, geod)
+
+comm_corlog
+```
+
+With all these distance classes, as we do more and more tests of classes have a multiple comparisons problem, p corrected values correct based on the number of tests we have done.
+
+```{r}
+max_dist <- max(geod) / 2
+
+plot(comm_corlog)
+mtext(side=3, 'Common Species - D. arboreus')
+abline(v = max_dist, col='red', lwd=3, lty=2)
+```
+
+Graphical representation of the Mantel correlogram for D. arboreus. Black dots represent distance classes that are statistically significant in the model and white dots represent non-significance. Points that are closer in space are more similar and those that are further apart show more dissimilarities with greater distance due to chance. 
+
+
+
+
+2) Build two generalized linear models to predict the abundance of the species Drypetes standleyi using the abundance of other tree species in the study site. Specifically examine the following species as predictor variables:
+
+Model 1: only include a single species as a predictor variable
+
+Model 2: include all of the species as predictor variables
+
+With both models examine the spatial dependence of the residuals using the function Variogram. Model the spatial dependence in the residuals using one of the error structures available.
+
+Did including the spatial error term have a large impact on the coefficients of the model?
+
+Did including the spatial error terms significantly improve model fit (use function anova to carry out model comparison)?
+
+Explain why you did or did not observe a difference in the influence of adding the spatial error term between the two models.
+
+```{r}
+sp_ids = c("Cordia.lasiocalyx", "Hirtella.triandra",
+           "Picramnia.latifolia", "Quassia.amara",
+           "Tabernaemontana.arborea", "Trattinnickia.aspera", 
+           "Xylopia.macrantha")
+
+sp_ref <- BCI$Drypetes.standleyi
+sp_a <- BCI$Cordia.lasiocalyx
+sp_b <- BCI$Hirtella.triandra
+sp_c <- BCI$Picramnia.latifolia
+sp_d <- BCI$Quassia.amara
+sp_e <- BCI$Tabernaemontana.arborea
+sp_f <- BCI$Trattinnickia.aspera
+sp_g <- BCI$Xylopia.macrantha
+
+pred_sp <- BCI[,sp_ids]
+names(pred_sp)
+head(pred_sp)
+
+```
+
+Model 1: only include a single species as a predictor variable
+
+Influence of H. triandra spatial distribution and abundanace on that of D. standleyi, another tree species in the BCI dataset.
+```{r}
+par(mfrow=c(1,2))
+plot(BCI_xy, cex = sp_b/ max(sp_b), main = "H. trianda Spatial Dist")
+plot(BCI_xy, cex = sp_ref/ max(sp_ref), main = "D. standleyi Spatial Dist")
+geod <- dist(BCI_xy)
+sp_bd <- dist(sp_b)
+sp_refd <- dist(sp_ref)
+maxdist <- max(geod) / 2
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(geod, sp_refd, main = 'Drypetes standleyi')
+abline(lm(sp_refd ~ geod), lwd=3, col='red')
+lines(lowess(geod, sp_refd), lwd = 2, col = 'pink')
+plot(geod, sp_bd, main = 'Hirtella triandra')
+abline(lm(sp_bd ~ geod), lwd=3, col='red')
+lines(lowess(geod, sp_bd), lwd = 2, col = 'blue')
+```
+
+From these plots we can see both tree species exhibit spatial auto-correlation. H. triandra has an interesting pattern changing slopes across distances while D. standleyi follows the regression line more closely.
+
+
+```{r}
+bci_dat = data.frame(BCI_xy, BCI)
+lm_b = gls(sp_ref ~ sp_b, data=bci_dat)
+resb = residuals(lm_b)
+
+plot(Variogram(lm_b, form= ~ x + y))
+plot(dist(bci_dat[, c('x', 'y')]), dist(resb))
+lines(lowess(dist(bci_dat[, c('x', 'y')]), dist(resb)), col='red', lwd=2)
+abline(v = maxdist, col='red', lwd=3, lty=2)
+```
+
+Linear Model -
+```{r}
+b_lin = update(lm_b, corr=corLin(form=~x + y))
+
+plot(Variogram(b_lin, maxDist = maxdist))
+plot(Variogram(b_lin, resType='normalized', maxDist = maxdist))
+```
+Linear model with nugget (non-zero y-intercept)
+```{r}
+b_lin_nug = update(lm_b, corr=corLin(form=~x + y, nugget = T))
+
+plot(Variogram(b_lin_nug, maxDist = maxdist))
+plot(Variogram(b_lin_nug, resType='normalized', maxDist = maxdist))
+```
+
+Gaussian Model -
+```{r}
+b_gaus = update(lm_b, corr=corGaus(form=~x + y))
+
+
+plot(Variogram(b_gaus, maxDist = maxdist))
+plot(Variogram(b_gaus, resType='normalized', maxDist = maxdist))
+```
+```{r}
+b_gaus_nug = update(lm_b, corr=corGaus(form=~x + y, nugget = T))
+
+
+plot(Variogram(b_gaus_nug, maxDist = maxdist))
+plot(Variogram(b_gaus_nug, resType='normalized', maxDist = maxdist))
+```
+
+Exponential Model - 
+```{r}
+b_exp = update(lm_b, corr=corExp(form=~x + y))
+
+plot(Variogram(b_exp, maxDist = maxdist))
+plot(Variogram(b_exp, resType='normalized', maxDist = maxdist))
+```
+```{r}
+b_exp_nug = update(lm_b, corr=corExp(form=~x + y))
+
+plot(Variogram(b_exp_nug, maxDist = maxdist))
+plot(Variogram(b_exp_nug, resType='normalized', maxDist = maxdist))
+```
+
+Spherical Model -
+```{r}
+b_sph = update(lm_b, corr=corSpher(form=~x + y, nugget = T))
+plot(Variogram(b_sph, maxDist = maxdist))
+plot(Variogram(b_sph, resType = "normalized", maxDist = maxdist))
+```
+
+```{r}
+b_sph_nug = update(lm_b, corr=corSpher(form=~x + y, nugget = T))
+plot(Variogram(b_sph_nug, maxDist = maxdist))
+plot(Variogram(b_sph_nug, resType = "normalized", maxDist = maxdist))
+```
+Rational Quadratic Model -
+```{r}
+b_rat = update(lm_b, corr=corRatio(form=~x + y))
+plot(Variogram(b_rat, maxDist = maxdist))
+plot(Variogram(b_rat, resType = "normalized", maxDist = maxdist))
+```
+
+```{r}
+b_rat_nug = update(lm_b, corr=corRatio(form=~x + y, nugget = T))
+plot(Variogram(b_rat_nug, maxDist = maxdist))
+plot(Variogram(b_rat_nug, resType = "normalized", maxDist = maxdist))
+```
+
+Comparing models - 
+```{r}
+anova(lm_b, b_lin, b_lin_nug, b_gaus, b_gaus_nug, b_exp, b_exp_nug, b_sph, b_sph_nug, b_rat, b_rat_nug, test=F)
+```
+
+From comparing here looking at the AIC values for eachc model, we can see that the guassian with nugget and rational quadratic with nugget spatial correlation structures fit the model best. 
+
+Based on the graphs for each semivariogram model and their residual distributions, I had expected the spherical model with a nugget to be the best fit. The regression line appeared to fit best and the residuals showed less of a trend compared to the guassian and rational quadratic models with a nugget. 
+
+```{r}
+summary(b_gaus)
+```
+
+```{r}
+summary(b_gaus_nug)
+```
+```{r}
+summary(b_rat)
+```
+
+```{r}
+summary(b_rat_nug)
+```
+
+```{r}
+col_brks = hist(residuals(b_rat_nug), plot=F)$breaks
+col_indices = as.numeric(cut(residuals(b_rat_nug), col_brks))
+cols = rev(terrain.colors(length(col_brks)))
+plot(BCI_xy, cex=2, pch=19, col=cols[col_indices])
+#how can I add a legend here to represent the dot colors in the graph?
+```
+
+Both H. trianda, the predictor species, and D. standleyi, the response species, are displaying spatial auto-correlation. However, it appears H. trianda is not a good predictor of the occcurrence and abundance of D. standleyi within the Barro Colorado Island. 
+
+
+The addition of the spatial error term (nugget = T) to correct for the non-zero y-intercept in the models fit much better compared to the models lacking it. Focusing on the models with the best AIC scores compared to their counterpart models lacking the nugget, the regression coefficients and t statistics move towards lesser importance indicating this predictor species alone is not sufficient in understanding abundance and distribution of D. standleyi. 
+
+The reason we observe a difference when adding the nugget spatial error term is in the model assumes at zero separation distance the semivariogram value equals 0. However, at micro-scale separation distances the semivariogram will exhibit a nugget effect due to having this non-zero y-intercept. This may be due to measurement error and/or the tendency of natural phenomena to occur over a range of spatial scales, at distances smaller than the sampling interval. Looking at the semivariogram graphs for each model we can see none start at zero and are all just a few points or more away, indicating a nugget may improve the fit of the models.
+
+In the last graph showing a spatial map of the residual distribution of our model it appears they do look spatially structured, with clustering in the lower right portion of the area, and we may need to include some more species to better understand spatial patterning of D. standleyi in relation to these other co-inhabiting predictor species.
+
+
+
+Model 2: include all of the species as predictor variables
+```{r}
+bci_dat = data.frame(BCI_xy, BCI)
+maxdist <- max(BCI_xy) / 2
+
+lm_all = gls(sp_ref ~ sp_a + sp_b + sp_c + sp_d + sp_e + sp_f + sp_g, data=bci_dat)
+res = residuals(lm_all)
+
+plot(Variogram(lm_all, form= ~ x + y))
+plot(dist(bci_dat[, c('x', 'y')]), dist(res))
+lines(lowess(dist(bci_dat[, c('x', 'y')]), dist(res)), col='red', lwd=2)
+abline(v = maxdist, col='red', lwd=3, lty=2)
+```
+```{r}
+pairs(data.frame(sp_ref, sp_a, sp_b, sp_c))
+```
+```{r}
+pairs(data.frame(sp_ref, sp_d, sp_e, sp_f, sp_g))
+```
+
+Comparing D. standleyi to the other predictor species with these pairs plots, the main pattern that jumps out is some species follow more clustering patterns in relation to D. standleyi abundance while others display high counts of 0 - 2 for the predictor species compared to our reference species creating these gradient looking lines on the pairs plots contrasting species' abundances.  
+
+
+Linear Model - 
+```{r}
+all_lin = update(lm_all, corr=corLin(form=~x + y))
+# examine fit of error model to the raw model residuals
+# note this function defaults to displaying pearson standardized residuals
+# resType='p' or resType='pearson'
+plot(Variogram(all_lin, maxDist = maxdist))
+plot(Variogram(all_lin, resType='normalized', maxDist = maxdist))
+```
+```{r}
+all_lin_nug = update(lm_all, corr=corLin(form=~x + y, nugget = T))
+# examine fit of error model to the raw model residuals
+# note this function defaults to displaying pearson standardized residuals
+# resType='p' or resType='pearson'
+plot(Variogram(all_lin_nug, maxDist = maxdist))
+plot(Variogram(all_lin_nug, resType='normalized', maxDist = maxdist))
+```
+
+Exponential Model - 
+```{r}
+all_exp = update(lm_all, corr=corExp(form=~x + y))
+# examine fit of error model to the raw model residuals
+# note this function defaults to displaying pearson standardized residuals
+# resType='p' or resType='pearson'
+plot(Variogram(all_exp, maxDist = maxdist))
+plot(Variogram(all_exp, resType='normalized', maxDist = maxdist))
+```
+
+```{r}
+all_exp_nug = update(all_exp, corr=corExp(form= ~ x + y, nugget=T))
+plot(Variogram(all_exp_nug, maxDist = maxdist))
+plot(Variogram(all_exp_nug, resType='n', maxDist = maxdist))
+```
+```{r}
+all_sph = update(lm_all, corr=corSpher(form=~x + y))
+
+plot(Variogram(all_sph, maxDist = maxdist))
+plot(Variogram(all_sph, resType='normalized', maxDist = maxdist))
+```
+```{r}
+all_sph_nug = update(lm_all, corr=corSpher(form=~x + y, nugget = T))
+
+plot(Variogram(all_sph_nug, maxDist = maxdist))
+plot(Variogram(all_sph_nug, resType='normalized', maxDist = maxdist))
+```
+
+Gaussian Model - 
+```{r}
+all_gaus = update(lm_all, corr=corGaus(form=~x + y))
+
+plot(Variogram(all_gaus, maxDist = maxdist))
+plot(Variogram(all_gaus, resType='normalized', maxDist = maxdist))
+```
+```{r}
+all_gaus_nug = update(lm_all, corr=corGaus(form=~x + y, nugget = T))
+
+plot(Variogram(all_gaus_nug, maxDist = maxdist))
+plot(Variogram(all_gaus_nug, resType='normalized', maxDist = maxdist))
+```
+
+Rational Quadratic Model - 
+
+```{r}
+all_rat = update(lm_all, corr=corRatio(form=~x + y))
+plot(Variogram(all_rat, maxDist = maxdist))
+plot(Variogram(all_rat, resType='normalized', maxDist = maxdist))
+```
+```{r}
+all_rat_nug = update(lm_all, corr=corRatio(form=~x + y, nugget=T))
+# examine fit of error model to model residuals
+plot(Variogram(all_rat_nug, maxDist = maxdist))
+plot(Variogram(all_rat_nug, resType='normalized', maxDist = maxdist))
+```
+
+Comparing the models - 
+```{r}
+anova(lm_all, all_lin, all_lin_nug, all_gaus, all_gaus_nug, all_exp, all_exp_nug, all_sph, all_sph_nug, all_rat, all_rat_nug, test=F)
+```
+
+Best fitting models to display the data are the exponential and spherical models with and without the nuggets are equally the best models. It appears the models leaving out the spatial error term are slightly better than those including it. The exponential model is the best by a few decimal points.
+
+```{r}
+summary(all_exp)
+```
+```{r}
+summary(all_exp_nug)
+```
+```{r}
+summary(all_sph)
+```
+```{r}
+summary(all_sph_nug)
+```
+
+Based on the models of best fit, across all the predictor species included there is no significant effect of their abundances' on that of D. standleyi acrosss space within the Barro Colorado Island. 
+
+The addition of the spatial error term (nugget = T) to correct for a non-zero y-intercept in the models did not significcantly differ in goodness of fit compared to the models lacking it. The models with a nugget of 0 were only slightly better in AIC by a few decimal points, not enough to be significantly better. The regression coefficients and t statistics do not change much with/without the nugget included. 
+
+The reason we don't observe greater fit of the model with the spatial error term as we did before is likely because of the additional independent variables we have included. Looking at the semivariogram graphs for each model we can for these non-zero y-intercepts, the difference between the y-intercept and 0 is much more minute. While they are still non-zero, we may see less of an effect because the lesser separation distance from 0.
+
+
+```{r}
+col_brksdos = hist(residuals(all_exp), plot=F)$breaks
+col_indicesdos = as.numeric(cut(residuals(all_exp), col_brksdos))
+colsdos = rev(terrain.colors(length(col_brksdos)))
+plot(BCI_xy, cex=2, pch=19, col=colsdos[col_indicesdos])
+```
+
+Appears to still be some spatial patterning in the residuals of our model, may need to use a multi-variate approach.
+
+
+RDA using the predictor species 
+```{r}
+bci_rda = rda(BCI, pred_sp[,])
+
+plot(bci_rda, display=c('sp', 'bp'))
+```
+```{r}
+anova(bci_rda)
+```
+
+Based on this RDA plot it appears a majority of species cluster in the same region, however species T. aspera and T. arborea show dissimilar patterns. Both species ordinations are pointing in the opposing direction of the other species and T. arborea's arrow is long and parallel to the negative x axis, suggesting it is highly correlated with this axis. The anova shows the rda model is significant so there may be more multi-variate interactions to be explored here.
+
+
+
